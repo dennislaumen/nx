@@ -38,6 +38,12 @@ export class NxAppWebpackPlugin {
     if (typeof target === 'string') {
       this.options.target = target;
     }
+    // Cypress serves its own index.html, and license extraction fails with
+    // ENOENT for buildable libraries under component testing.
+    if (process.env.NX_CYPRESS_COMPONENT_TEST === 'true') {
+      this.options.generateIndexHtml = false;
+      this.options.extractLicenses = false;
+    }
 
     applyBaseConfig(this.options, compiler.options, {
       useNormalizedEntry: true,
