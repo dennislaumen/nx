@@ -1623,6 +1623,50 @@ describe('native task hasher', () => {
     expect(two.inputs.files).not.toContain('libs/child/one.txt');
   });
 
+  it('names large Ultracache groups in hash details by their positive globs', async () => {
+    const { taskGraph, impl } = await upfrontFixture();
+    const childFiles = Array.from(
+      { length: 9 },
+      (_, i) => `libs/child/f${i}.txt`
+    );
+    await tempFs.createFiles({
+      ...Object.fromEntries(childFiles.map((file) => [file, file])),
+      'libs/parent/p.txt': 'p',
+    });
+    const commit = 'head'.padEnd(40, '0');
+    const store = new UltracacheConfigurationStore(
+      connectToNxDb(join(tempFs.tempDir, 'ultracache-label-db'), 'ultracache')
+    );
+    store.import({
+      requestedCommit: commit,
+      configurationsJson: JSON.stringify({
+        'child:compile': {
+          commit,
+          inputs: [...childFiles, 'libs/parent/p.txt'],
+          outputs: [],
+        },
+      }),
+    });
+
+    const hash = await impl.hashTask(
+      taskGraph.tasks['child:compile'],
+      taskGraph,
+      {},
+      tempFs.tempDir,
+      true,
+      store.get(commit)
+    );
+
+    const groups = Object.keys(hash.details).filter((key) =>
+      key.startsWith('files:[')
+    );
+    // Over the compact threshold, a group lists 8 globs and counts the rest.
+    expect(groups.sort()).toEqual([
+      `files:[${childFiles.slice(0, 8).join(',')} (+1 more)]`,
+      'files:[libs/parent/p.txt]',
+    ]);
+  });
+
   it.each(['libs/child/[(]group[)]/page.md', 'libs/child/\\(group\\)/page.md'])(
     'hashes an Ultracache read of a parenthesized directory (%s)',
     async (input) => {
